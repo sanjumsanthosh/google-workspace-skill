@@ -1,4 +1,4 @@
-# Google Workspace MCP / OpenClaw Skill
+# Google Workspace Skill for OpenClaw
 
 `google-workspace` is a small, dependency-free OpenClaw skill for working with
 Google Tasks and Gmail from an agent environment.
@@ -66,8 +66,8 @@ google-workspace
 Clone this repo wherever you keep reusable skills:
 
 ```bash
-git clone https://github.com/sanjumsanthosh/google-workspace-mcp.git
-cd google-workspace-mcp
+git clone https://github.com/sanjumsanthosh/google-workspace-skill.git
+cd google-workspace-skill
 ```
 
 For OpenClaw, copy or symlink the repo into your skills workspace:
