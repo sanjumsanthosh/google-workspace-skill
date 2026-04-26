@@ -209,11 +209,49 @@ def api(method, url, body=None):
         )
 
 
-def clean_body(text):
+NOISE_LINE_PATTERNS = [
+    r"^read more$",
+    r"^view job:?$",
+    r"^view more posts$",
+    r"^view the .+ policy",
+    r"^see all jobs on linkedin:?$",
+    r"^job search smarter with premium$",
+    r"^apply with resume & profile$",
+    r"^this company is actively hiring$",
+    r"^manage your .+:?$",
+    r"^unsubscribe(?:\s*:.*)?$",
+    r"^unsubscribe from .+",
+    r"^help:?$",
+    r"^learn why we included this:?$",
+    r"^learn more$",
+    r"^please do not reply to this message\.?$",
+    r"^you are receiving .+ emails?\.?$",
+    r"^you are receiving this email because .+",
+    r"^this email was intended for .+",
+    r"^to stop receiving these emails, .+",
+    r"^forwarding this invitation could allow .+",
+    r"^invitation from google calendar:?$",
+    r"^hide .+",
+    r"^img$",
+    r"^© .+",
+    r"^\(c\) .+",
+    r"^all rights reserved\.?$",
+    r"^linkedin and the linkedin logo are registered trademarks .+",
+    r"^san francisco, ca .+",
+    r"^\d\s+\d\s+\d\s+.+",
+    r"^\d+\s+upvotes?$",
+    r"^\d+\s+comments?$",
+    r"^\d+\s+(company|school)\s+alumni$",
+    r"^\d+\s+connections?$",
+]
+
+
+def normalize_text(text):
     text = re.sub(r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r"<script[^>]*>.*?</script>", "", text, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r"<[^>]+>", "", text)
     text = html.unescape(text)
+    text = re.sub(r"!\[[^\]]*\]\([^)]+\)", "", text)
     text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
     text = re.sub(r"https?://\S+", "", text)
     text = re.sub(
@@ -223,24 +261,77 @@ def clean_body(text):
         r"\u200b-\u200f"
         r"\u2028\u2029"
         r"\u202a-\u202e"
-        r"\ufeff"
-        r"\u00a0]",
+        r"\ufeff]",
         " ",
         text,
     )
+    text = text.replace("\u00a0", " ")
+    text = text.replace("\u2026", "...")
+    text = re.sub(r"\b1zwnj000\b", "1000", text)
+    text = re.sub(r"\s+100%\s+secure transactions.*$", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s+©\s+cred\.club.*$", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s+([,.;:!?])", r"\1", text)
+    return text
+
+
+def is_noise_line(line):
+    lowered = line.strip().lower()
+    return any(re.search(pattern, lowered) for pattern in NOISE_LINE_PATTERNS)
+
+
+def clean_body(text):
+    text = normalize_text(text)
     text = re.sub(r"[ \t]{2,}", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
 
     lines = [line.strip() for line in text.splitlines()]
-    lines = [
-        line
-        for line in lines
-        if line
-        and not re.fullmatch(r"[•·&;|\-_=\s\d]+", line)
-        and not re.fullmatch(r"\d+", line)
-        and len(line) > 1
-    ]
-    return "\n".join(lines).strip()
+    seen = set()
+    cleaned = []
+    for line in lines:
+        line = re.sub(r"\bimg\b", "", line).strip()
+        key = line.lower()
+        if (
+            line
+            and not re.fullmatch(r"[•·&;|\-_=\s\d]+", line)
+            and not re.fullmatch(r"\d+", line)
+            and len(line) > 1
+            and not is_noise_line(line)
+            and key not in seen
+        ):
+            cleaned.append(line)
+            seen.add(key)
+
+    return "\n".join(cleaned).strip()
+
+
+def clean_snippet(text):
+    text = normalize_text(text)
+    text = re.sub(r"\bimg\b", "", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def clean_header_value(text):
+    text = html.unescape(text)
+    text = re.sub(
+        r"[\u0000-\u0008\u000b\u000c\u000e-\u001f"
+        r"\u00ad"
+        r"\u034f"
+        r"\u200b-\u200f"
+        r"\u2028\u2029"
+        r"\u202a-\u202e"
+        r"\ufeff]",
+        " ",
+        text,
+    )
+    text = text.replace("\u00a0", " ")
+    text = text.replace("\u2026", "...")
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def clean_headers(headers):
+    return {key: clean_header_value(value) for key, value in headers.items()}
 
 
 def decode_base64(data):
@@ -343,12 +434,12 @@ def search_emails(search_query, max_results=10):
 
 def get_email_meta(msg_id):
     msg = api("GET", f"{GMAIL_API}/messages/{path_id(msg_id)}?format=metadata")
-    headers = parse_headers(msg.get("payload", {}).get("headers", []))
+    headers = clean_headers(parse_headers(msg.get("payload", {}).get("headers", [])))
     return {
         "id": msg["id"],
         "threadId": msg["threadId"],
         "labelIds": msg.get("labelIds", []),
-        "snippet": msg.get("snippet", ""),
+        "snippet": clean_snippet(msg.get("snippet", "")),
         "headers": headers,
         "sizeEstimate": msg.get("sizeEstimate"),
     }
@@ -361,8 +452,8 @@ def get_email_full(msg_id):
         "id": msg["id"],
         "threadId": msg["threadId"],
         "labelIds": msg.get("labelIds", []),
-        "snippet": msg.get("snippet", ""),
-        "headers": parse_headers(payload.get("headers", [])),
+        "snippet": clean_snippet(msg.get("snippet", "")),
+        "headers": clean_headers(parse_headers(payload.get("headers", []))),
         "body": extract_body(payload),
         "sizeEstimate": msg.get("sizeEstimate"),
     }
@@ -485,4 +576,4 @@ if __name__ == "__main__":
     command = sys.argv[1] if len(sys.argv) > 1 else None
     if not command:
         die({"available_commands": COMMANDS}, status=0)
-    print(json.dumps(dispatch(command, sys.argv[2:]), indent=2))
+    print(json.dumps(dispatch(command, sys.argv[2:]), indent=2, ensure_ascii=False))
