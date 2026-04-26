@@ -1,8 +1,18 @@
 ---
 name: google-workspace
-description: Manage Google Tasks and Gmail: list/create/move/complete tasks, read/search emails, manage labels.
-user-invocable: true
-metadata: {"openclaw":{"requires":{"bins":["python3"],"env":["GOOGLE_CLIENT_ID","GOOGLE_CLIENT_SECRET","GOOGLE_REFRESH_TOKEN"],"os":["linux","darwin"]}}}
+description: "Manage Google Tasks and Gmail: list/create/move/complete tasks, read/search emails, manage labels."
+metadata:
+  openclaw:
+    requires:
+      bins:
+        - python3
+      env:
+        - GOOGLE_CLIENT_ID
+        - GOOGLE_CLIENT_SECRET
+        - GOOGLE_REFRESH_TOKEN
+      os:
+        - linux
+        - darwin
 ---
 
 # Google Workspace Skill
@@ -161,4 +171,3 @@ python3 scripts/google_helper.py list_threads "is:unread"
 - 401 Unauthorized: refresh token may be revoked; re-run `scripts/get_tokens.py`.
 - 403 Forbidden: check test users and scopes. Required scopes are `tasks` and `gmail.modify`.
 - 404 Not Found: ID is likely wrong; re-fetch with list/search first.
-
