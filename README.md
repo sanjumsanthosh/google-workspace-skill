@@ -70,7 +70,16 @@ git clone https://github.com/sanjumsanthosh/google-workspace-skill.git
 cd google-workspace-skill
 ```
 
-For OpenClaw, copy or symlink the repo into your skills workspace:
+For Codex, symlink the repo into the recommended user-level skills directory:
+
+```bash
+mkdir -p ~/.codex/skills
+ln -s "$PWD" ~/.codex/skills/google-workspace
+```
+
+Then restart Codex so it can rediscover local skills.
+
+For OpenClaw, copy or symlink the repo into your OpenClaw skills workspace:
 
 ```bash
 ln -s "$PWD" /home/opc/.openclaw/workspace/skills/google-workspace
