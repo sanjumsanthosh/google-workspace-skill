@@ -167,7 +167,10 @@ python3 scripts/google_helper.py list_threads "is:unread"
 
 ## Error Handling
 
-- Missing env vars: set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REFRESH_TOKEN`.
-- 401 Unauthorized: refresh token may be revoked; re-run `scripts/get_tokens.py`.
-- 403 Forbidden: check test users and scopes. Required scopes are `tasks` and `gmail.modify`.
-- 404 Not Found: ID is likely wrong; re-fetch with list/search first.
+- Expected credential and Google API errors return structured JSON with `ok: false`.
+- Error payloads include `error.type`, `error.message`, and when available `error.status`, `error.body`, `error.operation`, and `error.details`.
+- The helper reports the issue clearly but does not prescribe next steps; the calling agent should decide how to recover.
+- Missing env vars use `error.type: missing_env`.
+- Invalid or revoked refresh tokens use `error.type: oauth_refresh_token_invalid`.
+- 403 API failures use `error.type: google_api_forbidden` and include the Google error body.
+- 404 API failures use `error.type: google_api_not_found`.

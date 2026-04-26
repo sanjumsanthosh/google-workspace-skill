@@ -27,9 +27,28 @@ def load_dotenv():
         os.environ.setdefault(key.strip(), value.strip().strip("'\""))
 
 
-def die(payload, status=1):
+def die(payload, status=0):
     print(json.dumps(payload, indent=2))
     sys.exit(status)
+
+
+def error_payload(kind, message, *, status=None, body=None, operation=None, details=None):
+    payload = {
+        "ok": False,
+        "error": {
+            "type": kind,
+            "message": message,
+        },
+    }
+    if status is not None:
+        payload["error"]["status"] = status
+    if body is not None:
+        payload["error"]["body"] = body
+    if operation is not None:
+        payload["error"]["operation"] = operation
+    if details is not None:
+        payload["error"]["details"] = details
+    return payload
 
 
 def path_id(value):
@@ -41,7 +60,14 @@ def get_token():
     required = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN"]
     missing = [name for name in required if not os.environ.get(name)]
     if missing:
-        die({"error": "Missing env vars", "missing": missing})
+        die(
+            error_payload(
+                "missing_env",
+                "Google Workspace credentials are not fully configured.",
+                operation="refresh_access_token",
+                details={"missing": missing},
+            )
+        )
 
     data = urllib.parse.urlencode(
         {
@@ -57,10 +83,26 @@ def get_token():
         resp = json.loads(urllib.request.urlopen(req).read())
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
-        die({"error": "Token refresh failed", "status": exc.code, "body": parse_error_body(body)})
+        die(token_error_payload(exc.code, parse_error_body(body)))
+    except urllib.error.URLError as exc:
+        die(
+            error_payload(
+                "oauth_network_error",
+                "Could not reach Google's OAuth token endpoint.",
+                operation="refresh_access_token",
+                details={"reason": str(exc.reason)},
+            )
+        )
 
     if "access_token" not in resp:
-        die({"error": "Token refresh failed", "detail": resp})
+        die(
+            error_payload(
+                "oauth_token_response_missing_access_token",
+                "Google returned a token response without an access_token.",
+                operation="refresh_access_token",
+                body=resp,
+            )
+        )
     return resp["access_token"]
 
 
@@ -69,6 +111,78 @@ def parse_error_body(body):
         return json.loads(body)
     except json.JSONDecodeError:
         return body
+
+
+def body_error_code(body):
+    if isinstance(body, dict):
+        value = body.get("error")
+        if isinstance(value, dict):
+            return value.get("status") or value.get("message")
+        return value
+    return None
+
+
+def token_error_payload(status, body):
+    code = body_error_code(body)
+    if code == "invalid_grant":
+        return error_payload(
+            "oauth_refresh_token_invalid",
+            "Google rejected the refresh token. It is expired, revoked, was minted for a different OAuth client, or was invalidated after scope/client changes.",
+            status=status,
+            body=body,
+            operation="refresh_access_token",
+        )
+    if code == "invalid_client":
+        return error_payload(
+            "oauth_client_invalid",
+            "Google rejected the OAuth client credentials.",
+            status=status,
+            body=body,
+            operation="refresh_access_token",
+        )
+    return error_payload(
+        "oauth_refresh_failed",
+        "Google OAuth token refresh failed.",
+        status=status,
+        body=body,
+        operation="refresh_access_token",
+    )
+
+
+def api_error_payload(status, body, method, url):
+    code = body_error_code(body)
+    if status == 401:
+        return error_payload(
+            "google_api_unauthorized",
+            "Google API rejected the access token.",
+            status=status,
+            body=body,
+            operation=f"{method} {url}",
+        )
+    if status == 403:
+        return error_payload(
+            "google_api_forbidden",
+            "Google API denied this request. This is usually a scope, API enablement, or OAuth test-user issue.",
+            status=status,
+            body=body,
+            operation=f"{method} {url}",
+            details={"google_error": code},
+        )
+    if status == 404:
+        return error_payload(
+            "google_api_not_found",
+            "Google API could not find the requested resource.",
+            status=status,
+            body=body,
+            operation=f"{method} {url}",
+        )
+    return error_payload(
+        "google_api_request_failed",
+        "Google API request failed.",
+        status=status,
+        body=body,
+        operation=f"{method} {url}",
+    )
 
 
 def api(method, url, body=None):
@@ -83,7 +197,16 @@ def api(method, url, body=None):
         return json.loads(raw) if raw else {"status": "ok"}
     except urllib.error.HTTPError as exc:
         body_text = exc.read().decode("utf-8", errors="replace")
-        die({"error": "Google API request failed", "status": exc.code, "body": parse_error_body(body_text)})
+        die(api_error_payload(exc.code, parse_error_body(body_text), method, url))
+    except urllib.error.URLError as exc:
+        die(
+            error_payload(
+                "google_api_network_error",
+                "Could not reach the Google API endpoint.",
+                operation=f"{method} {url}",
+                details={"reason": str(exc.reason)},
+            )
+        )
 
 
 def clean_body(text):
@@ -363,4 +486,3 @@ if __name__ == "__main__":
     if not command:
         die({"available_commands": COMMANDS}, status=0)
     print(json.dumps(dispatch(command, sys.argv[2:]), indent=2))
-
