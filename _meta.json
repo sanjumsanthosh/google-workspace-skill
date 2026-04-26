@@ -1,0 +1,20 @@
+{
+  "name": "google-workspace",
+  "version": "1.0.0",
+  "description": "Minimal Google Tasks and Gmail skill for OpenClaw.",
+  "author": "sanjay",
+  "skills": ["google-tasks", "gmail"],
+  "requires": {
+    "env": ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN"],
+    "bins": ["python3"]
+  },
+  "hooks": {
+    "openclaw": ["handler.js"]
+  },
+  "tags": ["google", "tasks", "gmail", "productivity"],
+  "openclaw": {
+    "minVersion": "1.0.0",
+    "category": "productivity"
+  }
+}
+
