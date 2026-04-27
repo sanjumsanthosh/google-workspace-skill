@@ -16,9 +16,20 @@ GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me"
 
 
 def load_dotenv():
-    env_path = Path(__file__).resolve().parents[1] / ".env"
-    if not env_path.exists():
+    candidates = []
+
+    cwd_env = Path.cwd() / ".env"
+    script_env = Path(__file__).resolve().parents[1] / ".env"
+
+    if cwd_env not in candidates:
+        candidates.append(cwd_env)
+    if script_env not in candidates:
+        candidates.append(script_env)
+
+    env_path = next((path for path in candidates if path.exists()), None)
+    if env_path is None:
         return
+
     for raw in env_path.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
         if not line or line.startswith("#") or "=" not in line:
