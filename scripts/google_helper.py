@@ -257,14 +257,15 @@ NOISE_LINE_PATTERNS = [
 ]
 
 
-def normalize_text(text):
+def normalize_text(text, keep_links=False):
     text = re.sub(r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r"<script[^>]*>.*?</script>", "", text, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r"<[^>]+>", "", text)
     text = html.unescape(text)
     text = re.sub(r"!\[[^\]]*\]\([^)]+\)", "", text)
     text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
-    text = re.sub(r"https?://\S+", "", text)
+    if not keep_links:
+        text = re.sub(r"https?://\S+", "", text)
     text = re.sub(
         r"[\u0000-\u0008\u000b\u000c\u000e-\u001f"
         r"\u00ad"
@@ -290,8 +291,8 @@ def is_noise_line(line):
     return any(re.search(pattern, lowered) for pattern in NOISE_LINE_PATTERNS)
 
 
-def clean_body(text):
-    text = normalize_text(text)
+def clean_body(text, keep_links=False):
+    text = normalize_text(text, keep_links=keep_links)
     text = re.sub(r"[ \t]{2,}", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
 
@@ -359,10 +360,10 @@ def extract_body(payload):
     mime = payload.get("mimeType", "")
 
     if mime == "text/plain":
-        return clean_body(decode_base64(payload.get("body", {}).get("data", "")))
+        return clean_body(decode_base64(payload.get("body", {}).get("data", "")), keep_links=True)
 
     if mime == "text/html":
-        return clean_body(decode_base64(payload.get("body", {}).get("data", "")))
+        return clean_body(decode_base64(payload.get("body", {}).get("data", "")), keep_links=True)
 
     plain = ""
     html_fallback = ""
